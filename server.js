@@ -35,15 +35,16 @@ db.exec(`
 `);
 
 // ====== 管理员密钥（首次运行自动生成） ======
-const adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
+let adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
 if (!adminRow) {
     const adminToken = crypto.randomBytes(32).toString('hex');
     db.prepare('INSERT INTO admin_tokens (token) VALUES (?)').run(adminToken);
-    console.log('\n========================================');
-    console.log('首次运行！管理员密钥（请妥善保存）：');
-    console.log(adminToken);
-    console.log('========================================\n');
+    adminRow = { token: adminToken };
 }
+console.log('\n========================================');
+console.log('管理员密钥：');
+console.log(adminRow.token);
+console.log('========================================\n');
 
 // ====== 中间件：管理员鉴权 ======
 const requireAdmin = (req, res, next) => {
