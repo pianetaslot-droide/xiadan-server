@@ -1,0 +1,12 @@
+{
+  "name": "xiadan-license-server",
+  "version": "2.0.0",
+  "description": "下单神器序列号验证服务 + 微信支付",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

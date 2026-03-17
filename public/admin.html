@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>下单神器 — 管理后台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f2f5; color: #333; font-size: 14px; }
+
+  /* Login overlay */
+  #loginOverlay { position: fixed; inset: 0; background: #1a1a2e; display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .login-box { background: white; border-radius: 16px; padding: 32px; width: 340px; text-align: center; }
+  .login-box h2 { margin-bottom: 6px; }
+  .login-box p  { color: #888; font-size: 13px; margin-bottom: 20px; }
+  .login-box input { width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; font-family: monospace; margin-bottom: 12px; }
+  .login-box button { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; }
+  .login-err { color: #ef4444; font-size: 12px; margin-top: 6px; display: none; }
+
+  /* Layout */
+  .topbar { background: #1a1a2e; color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h1 { font-size: 17px; }
+  .topbar span { font-size: 12px; color: #aaa; }
+  .logout-btn { background: none; border: 1px solid #555; color: #ccc; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .logout-btn:hover { background: #333; }
+
+  .content { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: white; border-radius: 10px; padding: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+  .stat-num   { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 11px; color: #888; margin-top: 4px; }
+  .green  { color: #07c160; }
+  .red    { color: #ef4444; }
+  .blue   { color: #3b82f6; }
+  .orange { color: #f59e0b; }
+  .purple { color: #8b5cf6; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; color: #666; background: white; border: 1px solid #e5e7eb; }
+  .tab.active { background: #1a1a2e; color: white; border-color: #1a1a2e; }
+
+  /* Panel */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn-primary { background: #1a1a2e; color: white; }
+  .btn-green   { background: #07c160; color: white; }
+  .btn-red     { background: #ef4444; color: white; }
+  .btn-blue    { background: #3b82f6; color: white; }
+  .btn-orange  { background: #f59e0b; color: white; }
+  .btn-gray    { background: #e5e7eb; color: #333; }
+  .btn:hover   { opacity: .9; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Table */
+  .table-wrap { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 600px; }
+  thead th { background: #f8f9fa; padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; color: #888; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafafa; }
+  .key-mono { font-family: monospace; font-size: 12px; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .badge-green  { background: #dcfce7; color: #166534; }
+  .badge-red    { background: #fee2e2; color: #991b1b; }
+  .badge-gray   { background: #f3f4f6; color: #6b7280; }
+  .badge-orange { background: #fef3c7; color: #92400e; }
+  .badge-blue   { background: #dbeafe; color: #1e40af; }
+
+  .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .action-btn { padding: 3px 9px; border: none; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 14px; padding: 28px; width: 360px; }
+  .modal h3 { margin-bottom: 18px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: #666; margin-bottom: 5px; }
+  .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  .modal-footer { display: flex; gap: 10px; margin-top: 20px; }
+  .modal-footer .btn { flex: 1; padding: 10px; text-align: center; }
+
+  .result-box { background: #f0fff4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-top: 14px; display: none; }
+  .result-box pre { font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #166534; }
+  .empty { text-align: center; padding: 40px; color: #aaa; }
+
+  @media(max-width:600px) {
+    .stats { grid-template-columns: repeat(3, 1fr); }
+    .stat-num { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <h2>🔐 管理后台</h2>
+    <p>输入管理员密钥登录</p>
+    <input type="password" id="tokenInput" placeholder="管理员密钥" onkeydown="if(event.key==='Enter')login()">
+    <button onclick="login()">登录</button>
+    <div class="login-err" id="loginErr">密钥错误，请重试</div>
+  </div>
+</div>
+
+<!-- Top bar -->
+<div class="topbar">
+  <h1>🛒 下单神器 — 管理后台</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span id="serverTime"></span>
+    <button class="logout-btn" onclick="logout()">退出</button>
+  </div>
+</div>
+
+<!-- Content -->
+<div class="content">
+  <!-- Stats -->
+  <div class="stats" id="statsGrid">
+    <div class="stat-card"><div class="stat-num green" id="s-active">-</div><div class="stat-label">有效序列号</div></div>
+    <div class="stat-card"><div class="stat-num red"   id="s-expired">-</div><div class="stat-label">已过期</div></div>
+    <div class="stat-card"><div class="stat-num blue"  id="s-total">-</div><div class="stat-label">序列号总数</div></div>
+    <div class="stat-card"><div class="stat-num orange" id="s-revenue">-</div><div class="stat-label">总收入 (元)</div></div>
+    <div class="stat-card"><div class="stat-num purple" id="s-orders">-</div><div class="stat-label">已付订单</div></div>
+    <div class="stat-card"><div class="stat-num"       id="s-today">-</div><div class="stat-label">今日验证次数</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('licenses')">序列号管理</div>
+    <div class="tab"        onclick="switchTab('orders')">订单记录</div>
+  </div>
+
+  <!-- Licenses panel -->
+  <div class="panel active" id="panel-licenses">
+    <div class="toolbar">
+      <input id="searchInput" placeholder="搜索序列号..." oninput="filterTable()">
+      <select id="filterStatus" onchange="filterTable()">
+        <option value="">全部状态</option>
+        <option value="active">有效</option>
+        <option value="expired">已过期</option>
+        <option value="disabled">已禁用</option>
+      </select>
+      <button class="btn btn-green" onclick="openGenModal()">+ 生成序列号</button>
+      <button class="btn btn-gray"  onclick="loadLicenses()">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table id="licenseTable">
+        <thead>
+          <tr>
+            <th>序列号</th>
+            <th>状态</th>
+            <th>设备绑定</th>
+            <th>创建时间</th>
+            <th>到期时间</th>
+            <th>备注</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="licenseBody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+      </table>
+    </div>
+    <div id="licenseCount" style="font-size:12px;color:#888;margin-top:8px;padding:0 4px;"></div>
+  </div>
+
+  <!-- Orders panel -->
+  <div class="panel" id="panel-orders">
+    <div class="toolbar">
+      <input id="orderSearch" placeholder="搜索订单号..." oninput="filterOrders()">
+      <select id="orderFilter" onchange="filterOrders()">
+        <option value="">全部状态</option>
+        <option value="paid">已支付</option>
+        <option value="pending">待支付</option>
+      </select>
+      <button class="btn btn-gray" onclick="loadOrders()">刷新</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>订单号</th>
+            <th>套餐</th>
+            <th>金额</th>
+            <th>状态</th>
+            <th>序列号</th>
+            <th>支付时间</th>
+            <th>下单时间</th>
+          </tr>
+        </thead>
+        <tbody id="orderBody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Generate modal -->
+<div class="modal-overlay" id="genModal">
+  <div class="modal">
+    <h3>生成序列号</h3>
+    <div class="form-group">
+      <label>数量</label>
+      <input type="number" id="genCount" value="1" min="1" max="100">
+    </div>
+    <div class="form-group">
+      <label>有效天数</label>
+      <select id="genDays">
+        <option value="30">30天（月度）</option>
+        <option value="90">90天（季度）</option>
+        <option value="365">365天（年度）</option>
+        <option value="7">7天（体验）</option>
+        <option value="1">1天（测试）</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>备注（可选）</label>
+      <input type="text" id="genNote" placeholder="例如：赠送/代理">
+    </div>
+    <div class="result-box" id="genResult"><pre id="genResultText"></pre></div>
+    <div class="modal-footer">
+      <button class="btn btn-gray"    onclick="closeGenModal()">取消</button>
+      <button class="btn btn-primary" onclick="generateKeys()">生成</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminToken  = '';
+let allLicenses = [];
+let allOrders   = [];
+
+// ===== Login =====
+function login() {
+  const t = document.getElementById('tokenInput').value.trim();
+  if (!t) return;
+  fetch('/api/admin/stats', { headers: { 'x-admin-token': t } })
+    .then(r => {
+      if (r.ok) { adminToken = t; localStorage.setItem('adminToken', t); startApp(t); }
+      else { document.getElementById('loginErr').style.display = 'block'; }
+    }).catch(() => { document.getElementById('loginErr').style.display = 'block'; });
+}
+
+function logout() {
+  localStorage.removeItem('adminToken');
+  location.reload();
+}
+
+function startApp() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  loadAll();
+  setInterval(loadStats, 30000);
+  setInterval(() => {
+    document.getElementById('serverTime').textContent = new Date().toLocaleTimeString('zh');
+  }, 1000);
+}
+
+// Auto-login from localStorage
+window.onload = () => {
+  const saved = localStorage.getItem('adminToken');
+  if (saved) {
+    adminToken = saved;
+    fetch('/api/admin/stats', { headers: { 'x-admin-token': saved } })
+      .then(r => r.ok ? startApp() : null)
+      .catch(() => {});
+  }
+};
+
+// ===== API =====
+async function api(method, path, body) {
+  const opts = { method, headers: { 'x-admin-token': adminToken, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+function loadAll()      { loadStats(); loadLicenses(); loadOrders(); }
+function loadStats()    { api('GET', '/api/admin/stats').then(renderStats); }
+function loadLicenses() { api('GET', '/api/admin/licenses').then(d => { allLicenses = d.licenses || []; renderLicenses(allLicenses); }); }
+function loadOrders()   { api('GET', '/api/admin/orders').then(d => { allOrders = d.orders || []; renderOrders(allOrders); }); }
+
+// ===== Stats =====
+function renderStats(d) {
+  document.getElementById('s-active').textContent  = d.active   ?? '-';
+  document.getElementById('s-expired').textContent = d.expired  ?? '-';
+  document.getElementById('s-total').textContent   = d.total    ?? '-';
+  document.getElementById('s-revenue').textContent = d.revenue  ? (d.revenue / 100).toFixed(0) : '0';
+  document.getElementById('s-orders').textContent  = d.order_paid ?? '-';
+  document.getElementById('s-today').textContent   = d.today_verifies ?? '-';
+}
+
+// ===== Licenses =====
+function renderLicenses(rows) {
+  const tbody = document.getElementById('licenseBody');
+  document.getElementById('licenseCount').textContent = `共 ${rows.length} 条`;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+
+  tbody.innerHTML = rows.map(r => {
+    const isExpired  = r.is_expired;
+    const isDisabled = !r.is_active;
+    let badge;
+    if (isDisabled)       badge = '<span class="badge badge-gray">已禁用</span>';
+    else if (isExpired)   badge = '<span class="badge badge-red">已过期</span>';
+    else                  badge = '<span class="badge badge-green">有效</span>';
+
+    const bound = r.device_id
+      ? `<span class="badge badge-blue">已绑定</span>`
+      : `<span class="badge badge-gray">未绑定</span>`;
+
+    const exp   = r.expires_at ? r.expires_at.slice(0, 10) : '-';
+    const cre   = r.created_at ? r.created_at.slice(0, 10) : '-';
+    const note  = r.note || '';
+
+    return `<tr>
+      <td class="key-mono">${r.license_key}</td>
+      <td>${badge}</td>
+      <td>${bound}</td>
+      <td>${cre}</td>
+      <td>${exp}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${note}">${note}</td>
+      <td><div class="actions">
+        ${isDisabled
+          ? `<button class="action-btn btn-green" onclick="action('enable','${r.license_key}')">启用</button>`
+          : `<button class="action-btn btn-red"   onclick="action('disable','${r.license_key}')">禁用</button>`}
+        <button class="action-btn btn-blue"   onclick="openRenew('${r.license_key}')">续费</button>
+        ${r.device_id ? `<button class="action-btn btn-orange" onclick="action('unbind','${r.license_key}')">解绑</button>` : ''}
+        <button class="action-btn btn-gray" onclick="copyText('${r.license_key}')">复制</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function filterTable() {
+  const q      = document.getElementById('searchInput').value.toLowerCase();
+  const status = document.getElementById('filterStatus').value;
+  const rows   = allLicenses.filter(r => {
+    const matchQ = !q || r.license_key.toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q);
+    let matchS = true;
+    if (status === 'active')   matchS = r.is_active && !r.is_expired;
+    if (status === 'expired')  matchS = !!r.is_expired;
+    if (status === 'disabled') matchS = !r.is_active;
+    return matchQ && matchS;
+  });
+  renderLicenses(rows);
+}
+
+async function action(act, key) {
+  if (!confirm(`确定要${act === 'enable' ? '启用' : act === 'disable' ? '禁用' : '解绑'}序列号 ${key}？`)) return;
+  await api('POST', `/api/admin/${act}`, { license_key: key });
+  loadLicenses(); loadStats();
+}
+
+// Renew inline
+function openRenew(key) {
+  const days = prompt(`续费序列号：\n${key}\n\n请输入续费天数：`, '30');
+  if (!days || isNaN(days)) return;
+  api('POST', '/api/admin/renew', { license_key: key, days: parseInt(days) })
+    .then(d => { alert(d.msg || '续费成功'); loadLicenses(); loadStats(); });
+}
+
+// ===== Orders =====
+function renderOrders(rows) {
+  const tbody = document.getElementById('orderBody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+
+  const planMap = { monthly: '月度', quarterly: '季度', annual: '年度' };
+  tbody.innerHTML = rows.map(r => {
+    const badge = r.status === 'paid'
+      ? '<span class="badge badge-green">已支付</span>'
+      : '<span class="badge badge-orange">待支付</span>';
+    const amt   = r.amount ? '¥' + (r.amount / 100).toFixed(1) : '-';
+    const paid  = r.paid_at ? r.paid_at.slice(0, 16) : '-';
+    const cre   = r.created_at ? r.created_at.slice(0, 16) : '-';
+    const key   = r.license_key ? `<span class="key-mono">${r.license_key}</span>` : '-';
+    return `<tr>
+      <td class="key-mono" style="font-size:11px">${r.order_no}</td>
+      <td>${planMap[r.plan] || r.plan}</td>
+      <td>${amt}</td>
+      <td>${badge}</td>
+      <td>${key}</td>
+      <td>${paid}</td>
+      <td>${cre}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterOrders() {
+  const q  = document.getElementById('orderSearch').value.toLowerCase();
+  const st = document.getElementById('orderFilter').value;
+  const rows = allOrders.filter(r => {
+    const matchQ = !q || r.order_no.toLowerCase().includes(q) || (r.license_key || '').toLowerCase().includes(q);
+    const matchS = !st || r.status === st;
+    return matchQ && matchS;
+  });
+  renderOrders(rows);
+}
+
+// ===== Generate Modal =====
+function openGenModal()  { document.getElementById('genResult').style.display = 'none'; document.getElementById('genModal').classList.add('open'); }
+function closeGenModal() { document.getElementById('genModal').classList.remove('open'); }
+
+async function generateKeys() {
+  const count = parseInt(document.getElementById('genCount').value) || 1;
+  const days  = parseInt(document.getElementById('genDays').value)  || 30;
+  const note  = document.getElementById('genNote').value.trim();
+
+  const d = await api('POST', '/api/admin/generate', { count, days, note });
+  const resultBox  = document.getElementById('genResult');
+  const resultText = document.getElementById('genResultText');
+  resultBox.style.display = 'block';
+  resultText.textContent  = d.keys ? d.keys.join('\n') : (d.msg || '生成失败');
+  loadLicenses(); loadStats();
+}
+
+// ===== Helpers =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === (name === 'licenses' ? 0 : 1)));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+  if (name === 'orders') loadOrders();
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).catch(() => {});
+  const t = event.target;
+  const o = t.textContent;
+  t.textContent = '✓';
+  setTimeout(() => t.textContent = o, 1200);
+}
+</script>
+</body>
+</html>
