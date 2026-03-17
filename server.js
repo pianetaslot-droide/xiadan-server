@@ -191,12 +191,6 @@ app.post('/api/admin/unbind', requireAdmin, (req, res) => {
     res.json({ msg: '已解绑设备', license_key: key });
 });
 
-// TEMP - rimuovere dopo uso
-app.get('/api/temp/gettoken', (req, res) => {
-    const row = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
-    res.json({ token: row?.token });
-});
-
 // ====== Pannello Admin ======
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
