@@ -7,6 +7,24 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ====== Rate Limiting (max 10 verify/IP/minuto) ======
+const rateLimitMap = new Map();
+const RATE_WINDOW = 60_000;
+const RATE_MAX = 10;
+const rateLimit = (req, res, next) => {
+    const ip = (req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '').trim();
+    const now = Date.now();
+    const rec = rateLimitMap.get(ip);
+    if (!rec || now > rec.resetAt) {
+        rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
+        return next();
+    }
+    rec.count++;
+    if (rec.count > RATE_MAX) return res.status(429).json({ valid: false, msg: '请求过于频繁，请稍后再试' });
+    next();
+};
+setInterval(() => { const now = Date.now(); rateLimitMap.forEach((v, k) => { if (now > v.resetAt) rateLimitMap.delete(k); }); }, 300_000);
+
 // ====== 数据库初始化 ======
 const db = new DatabaseSync(path.join(__dirname, 'licenses.db'));
 db.exec('PRAGMA journal_mode = WAL');
@@ -19,6 +37,7 @@ db.exec(`
         created_at TEXT DEFAULT (datetime('now')),
         expires_at TEXT NOT NULL,
         is_active INTEGER DEFAULT 1,
+        is_trial INTEGER DEFAULT 0,
         note TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS admin_tokens (
@@ -32,7 +51,13 @@ db.exec(`
         ip TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS trial_devices (
+        device_id TEXT PRIMARY KEY,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
 `);
+// Migrazione colonna is_trial su DB esistenti
+try { db.exec('ALTER TABLE licenses ADD COLUMN is_trial INTEGER DEFAULT 0'); } catch(e) {}
 
 // ====== 管理员密钥（首次运行自动生成） ======
 let adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
@@ -66,7 +91,7 @@ function generateKey() {
 //  APP 端接口
 // ==========================================
 
-app.post('/api/verify', (req, res) => {
+app.post('/api/verify', rateLimit, (req, res) => {
     const { license_key, device_id } = req.body;
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
@@ -99,7 +124,32 @@ app.post('/api/verify', (req, res) => {
     }
 
     log('ok');
-    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at });
+    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1 });
+});
+
+// ====== Trial 1 ora (una volta per dispositivo) ======
+app.post('/api/trial', rateLimit, (req, res) => {
+    const { device_id } = req.body;
+    if (!device_id) return res.json({ valid: false, msg: '参数不完整' });
+
+    const used = db.prepare('SELECT device_id FROM trial_devices WHERE device_id = ?').get(device_id);
+    if (used) return res.json({ valid: false, msg: '每台设备只能免费试用一次', trial_used: true });
+
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const seg = () => Array.from({ length: 4 }, () => chars[crypto.randomInt(chars.length)]).join('');
+    const trialKey = `TRIA-${seg()}-${seg()}-${seg()}`;
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 ora
+
+    db.exec('BEGIN');
+    try {
+        db.prepare('INSERT INTO licenses (license_key, expires_at, is_trial, note, device_id) VALUES (?, ?, 1, ?, ?)').run(trialKey, expires.toISOString(), '免费试用1小时', device_id);
+        db.prepare('INSERT INTO trial_devices (device_id) VALUES (?)').run(device_id);
+        db.exec('COMMIT');
+    } catch(e) {
+        db.exec('ROLLBACK');
+        return res.status(500).json({ valid: false, msg: '生成试用失败，请重试' });
+    }
+    return res.json({ valid: true, license_key: trialKey, expires_at: expires.toISOString(), msg: '试用激活成功，有效1小时', is_trial: true });
 });
 
 // ==========================================
@@ -109,11 +159,12 @@ app.post('/api/verify', (req, res) => {
 // 统计
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
     const total      = db.prepare('SELECT COUNT(*) as c FROM licenses').get().c;
-    const active     = db.prepare("SELECT COUNT(*) as c FROM licenses WHERE is_active=1 AND datetime('now') <= expires_at").get().c;
+    const active     = db.prepare("SELECT COUNT(*) as c FROM licenses WHERE is_active=1 AND datetime('now') <= expires_at AND is_trial=0").get().c;
+    const trials     = db.prepare('SELECT COUNT(*) as c FROM trial_devices').get().c;
     const expired    = db.prepare("SELECT COUNT(*) as c FROM licenses WHERE datetime('now') > expires_at").get().c;
     const disabled   = db.prepare('SELECT COUNT(*) as c FROM licenses WHERE is_active=0').get().c;
     const todayVerif = db.prepare("SELECT COUNT(*) as c FROM verify_log WHERE date(created_at)=date('now')").get().c;
-    res.json({ total, active, expired, disabled, today_verifies: todayVerif });
+    res.json({ total, active, trials, expired, disabled, today_verifies: todayVerif });
 });
 
 // 查看所有序列号
