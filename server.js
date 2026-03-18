@@ -130,17 +130,31 @@ app.post('/api/verify', rateLimit, (req, res) => {
 
 // ====== Script protetto: solo licenze valide ======
 const GIST_URL = 'https://gist.githubusercontent.com/pianetaslot-droide/2b67c88036b16c0d4b91a7281748f8d4/raw/yollgo_script.js';
+const SCRIPT_SECRET = process.env.SCRIPT_SECRET; // chiave AES-256 in Railway env vars
 let scriptCache = { content: null, fetchedAt: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
 
-function fetchScript() {
+function fetchEncryptedScript() {
     return new Promise((resolve, reject) => {
         https.get(GIST_URL + '?t=' + Date.now(), (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
-            res.on('end', () => resolve(data));
+            res.on('end', () => resolve(data.trim()));
         }).on('error', reject);
     });
+}
+
+function decryptScript(encryptedBase64) {
+    if (!SCRIPT_SECRET) throw new Error('SCRIPT_SECRET non configurato');
+    const buf = Buffer.from(encryptedBase64, 'base64');
+    const iv         = buf.slice(0, 12);
+    const tag        = buf.slice(buf.length - 16);
+    const ciphertext = buf.slice(12, buf.length - 16);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(SCRIPT_SECRET, 'hex'), iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(ciphertext, null, 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
 }
 
 app.post('/api/script', rateLimit, async (req, res) => {
@@ -150,18 +164,20 @@ app.post('/api/script', rateLimit, async (req, res) => {
     const key = license_key.trim().toUpperCase();
     const row = db.prepare('SELECT * FROM licenses WHERE license_key = ?').get(key);
 
-    if (!row || !row.is_active)              return res.json({ valid: false, msg: '序列号无效' });
+    if (!row || !row.is_active)                    return res.json({ valid: false, msg: '序列号无效' });
     if (new Date().toISOString() > row.expires_at) return res.json({ valid: false, msg: '序列号已过期' });
     if (row.device_id && row.device_id !== device_id) return res.json({ valid: false, msg: '设备不匹配' });
 
     try {
         const now = Date.now();
         if (!scriptCache.content || now - scriptCache.fetchedAt > CACHE_TTL) {
-            scriptCache.content = await fetchScript();
+            const encrypted = await fetchEncryptedScript();
+            scriptCache.content = decryptScript(encrypted);
             scriptCache.fetchedAt = now;
         }
         res.json({ valid: true, script: scriptCache.content });
     } catch (e) {
+        console.error('Script decrypt error:', e.message);
         res.status(500).json({ valid: false, msg: '脚本加载失败，请重试' });
     }
 });
