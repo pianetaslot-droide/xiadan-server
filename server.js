@@ -292,6 +292,15 @@ app.post('/api/admin/renew', requireAdmin, (req, res) => {
     res.json({ msg: `已续费 ${days} 天`, license_key: key, new_expires_at: base.toISOString() });
 });
 
+// 修改客户名称
+app.post('/api/admin/rename', requireAdmin, (req, res) => {
+    const key  = (req.body.license_key || '').toUpperCase();
+    const name = (req.body.customer_name || '').trim();
+    const r = db.prepare('UPDATE licenses SET customer_name=? WHERE license_key=?').run(name, key);
+    if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
+    res.json({ msg: '客户名称已更新', license_key: key, customer_name: name });
+});
+
 // 解绑设备
 app.post('/api/admin/unbind', requireAdmin, (req, res) => {
     const key = (req.body.license_key || '').toUpperCase();

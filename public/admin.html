@@ -339,7 +339,8 @@ function renderLicenses(rows) {
           : `<button class="action-btn btn-red"   onclick="action('disable','${r.license_key}')">禁用</button>`}
         <button class="action-btn btn-blue"   onclick="openRenew('${r.license_key}')">续费</button>
         ${r.device_id ? `<button class="action-btn btn-orange" onclick="action('unbind','${r.license_key}')">解绑</button>` : ''}
-        <button class="action-btn btn-gray" onclick="copyText('${r.license_key}')">复制</button>
+        <button class="action-btn btn-gray"   onclick="editName('${r.license_key}', \`${customerName}\`)">改名</button>
+        <button class="action-btn btn-gray"   onclick="copyText('${r.license_key}')">复制</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -440,6 +441,13 @@ function switchTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById(`panel-${name}`).classList.add('active');
   if (name === 'orders') loadOrders();
+}
+
+async function editName(key, current) {
+  const name = prompt(`修改客户名称：\n${key}`, current || '');
+  if (name === null) return; // cancelled
+  await api('POST', '/api/admin/rename', { license_key: key, customer_name: name.trim() });
+  loadLicenses();
 }
 
 function copyText(text) {
