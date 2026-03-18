@@ -2,6 +2,7 @@ const express = require('express');
 const { DatabaseSync } = require('node:sqlite');
 const crypto = require('crypto');
 const path = require('path');
+const https = require('https');
 
 const app = express();
 app.use(express.json());
@@ -125,6 +126,44 @@ app.post('/api/verify', rateLimit, (req, res) => {
 
     log('ok');
     return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1 });
+});
+
+// ====== Script protetto: solo licenze valide ======
+const GIST_URL = 'https://gist.githubusercontent.com/pianetaslot-droide/2b67c88036b16c0d4b91a7281748f8d4/raw/yollgo_script.js';
+let scriptCache = { content: null, fetchedAt: 0 };
+const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
+
+function fetchScript() {
+    return new Promise((resolve, reject) => {
+        https.get(GIST_URL + '?t=' + Date.now(), (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve(data));
+        }).on('error', reject);
+    });
+}
+
+app.post('/api/script', rateLimit, async (req, res) => {
+    const { license_key, device_id } = req.body;
+    if (!license_key || !device_id) return res.json({ valid: false, msg: '参数不完整' });
+
+    const key = license_key.trim().toUpperCase();
+    const row = db.prepare('SELECT * FROM licenses WHERE license_key = ?').get(key);
+
+    if (!row || !row.is_active)              return res.json({ valid: false, msg: '序列号无效' });
+    if (new Date().toISOString() > row.expires_at) return res.json({ valid: false, msg: '序列号已过期' });
+    if (row.device_id && row.device_id !== device_id) return res.json({ valid: false, msg: '设备不匹配' });
+
+    try {
+        const now = Date.now();
+        if (!scriptCache.content || now - scriptCache.fetchedAt > CACHE_TTL) {
+            scriptCache.content = await fetchScript();
+            scriptCache.fetchedAt = now;
+        }
+        res.json({ valid: true, script: scriptCache.content });
+    } catch (e) {
+        res.status(500).json({ valid: false, msg: '脚本加载失败，请重试' });
+    }
 });
 
 // ====== Trial 1 ora (una volta per dispositivo) ======
