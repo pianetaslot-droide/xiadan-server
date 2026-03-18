@@ -158,6 +158,7 @@
         <thead>
           <tr>
             <th>序列号</th>
+            <th>客户名称</th>
             <th>状态</th>
             <th>设备绑定</th>
             <th>创建时间</th>
@@ -166,7 +167,7 @@
             <th>操作</th>
           </tr>
         </thead>
-        <tbody id="licenseBody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+        <tbody id="licenseBody"><tr><td colspan="8" class="empty">加载中...</td></tr></tbody>
       </table>
     </div>
     <div id="licenseCount" style="font-size:12px;color:#888;margin-top:8px;padding:0 4px;"></div>
@@ -219,6 +220,10 @@
         <option value="7">7天（体验）</option>
         <option value="1">1天（测试）</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>客户名称（可选）</label>
+      <input type="text" id="genCustomerName" placeholder="例如：张三 / 微信号">
     </div>
     <div class="form-group">
       <label>备注（可选）</label>
@@ -300,7 +305,7 @@ function renderStats(d) {
 function renderLicenses(rows) {
   const tbody = document.getElementById('licenseBody');
   document.getElementById('licenseCount').textContent = `共 ${rows.length} 条`;
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>'; return; }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无数据</td></tr>'; return; }
 
   tbody.innerHTML = rows.map(r => {
     const isExpired  = r.is_expired;
@@ -308,18 +313,21 @@ function renderLicenses(rows) {
     let badge;
     if (isDisabled)       badge = '<span class="badge badge-gray">已禁用</span>';
     else if (isExpired)   badge = '<span class="badge badge-red">已过期</span>';
+    else if (r.is_trial)  badge = '<span class="badge badge-orange">试用</span>';
     else                  badge = '<span class="badge badge-green">有效</span>';
 
     const bound = r.device_id
       ? `<span class="badge badge-blue">已绑定</span>`
       : `<span class="badge badge-gray">未绑定</span>`;
 
-    const exp   = r.expires_at ? r.expires_at.slice(0, 10) : '-';
-    const cre   = r.created_at ? r.created_at.slice(0, 10) : '-';
-    const note  = r.note || '';
+    const exp          = r.expires_at    ? r.expires_at.slice(0, 10)    : '-';
+    const cre          = r.created_at    ? r.created_at.slice(0, 10)    : '-';
+    const note         = r.note          || '';
+    const customerName = r.customer_name || '';
 
     return `<tr>
       <td class="key-mono">${r.license_key}</td>
+      <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${customerName}">${customerName || '<span style="color:#ccc">—</span>'}</td>
       <td>${badge}</td>
       <td>${bound}</td>
       <td>${cre}</td>
@@ -341,7 +349,7 @@ function filterTable() {
   const q      = document.getElementById('searchInput').value.toLowerCase();
   const status = document.getElementById('filterStatus').value;
   const rows   = allLicenses.filter(r => {
-    const matchQ = !q || r.license_key.toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q);
+    const matchQ = !q || r.license_key.toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q) || (r.customer_name || '').toLowerCase().includes(q);
     let matchS = true;
     if (status === 'active')   matchS = r.is_active && !r.is_expired;
     if (status === 'expired')  matchS = !!r.is_expired;
@@ -403,15 +411,22 @@ function filterOrders() {
 }
 
 // ===== Generate Modal =====
-function openGenModal()  { document.getElementById('genResult').style.display = 'none'; document.getElementById('genModal').classList.add('open'); }
+function openGenModal() {
+  document.getElementById('genResult').style.display = 'none';
+  document.getElementById('genCustomerName').value = '';
+  document.getElementById('genNote').value = '';
+  document.getElementById('genCount').value = '1';
+  document.getElementById('genModal').classList.add('open');
+}
 function closeGenModal() { document.getElementById('genModal').classList.remove('open'); }
 
 async function generateKeys() {
-  const count = parseInt(document.getElementById('genCount').value) || 1;
-  const days  = parseInt(document.getElementById('genDays').value)  || 30;
-  const note  = document.getElementById('genNote').value.trim();
+  const count        = parseInt(document.getElementById('genCount').value) || 1;
+  const days         = parseInt(document.getElementById('genDays').value)  || 30;
+  const note         = document.getElementById('genNote').value.trim();
+  const customerName = document.getElementById('genCustomerName').value.trim();
 
-  const d = await api('POST', '/api/admin/generate', { count, days, note });
+  const d = await api('POST', '/api/admin/generate', { count, days, note, customer_name: customerName });
   const resultBox  = document.getElementById('genResult');
   const resultText = document.getElementById('genResultText');
   resultBox.style.display = 'block';

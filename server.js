@@ -39,7 +39,8 @@ db.exec(`
         expires_at TEXT NOT NULL,
         is_active INTEGER DEFAULT 1,
         is_trial INTEGER DEFAULT 0,
-        note TEXT DEFAULT ''
+        note TEXT DEFAULT '',
+        customer_name TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS admin_tokens (
         token TEXT PRIMARY KEY
@@ -57,8 +58,9 @@ db.exec(`
         created_at TEXT DEFAULT (datetime('now'))
     );
 `);
-// Migrazione colonna is_trial su DB esistenti
+// Migrazione colonne su DB esistenti
 try { db.exec('ALTER TABLE licenses ADD COLUMN is_trial INTEGER DEFAULT 0'); } catch(e) {}
+try { db.exec("ALTER TABLE licenses ADD COLUMN customer_name TEXT DEFAULT ''"); } catch(e) {}
 
 // ====== 管理员密钥（首次运行自动生成） ======
 let adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
@@ -225,7 +227,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 // 查看所有序列号
 app.get('/api/admin/licenses', requireAdmin, (req, res) => {
     const rows = db.prepare(`
-        SELECT id, license_key, device_id, created_at, expires_at, is_active, note,
+        SELECT id, license_key, customer_name, device_id, created_at, expires_at, is_active, is_trial, note,
                CASE WHEN datetime('now') > expires_at THEN 1 ELSE 0 END as is_expired
         FROM licenses ORDER BY created_at DESC LIMIT 500
     `).all();
@@ -234,21 +236,22 @@ app.get('/api/admin/licenses', requireAdmin, (req, res) => {
 
 // 批量生成序列号
 app.post('/api/admin/generate', requireAdmin, (req, res) => {
-    const count = Math.min(req.body.count || 1, 100);
-    const days  = req.body.days || 30;
-    const note  = req.body.note || '手动生成';
+    const count         = Math.min(req.body.count || 1, 100);
+    const days          = req.body.days || 30;
+    const note          = req.body.note || '手动生成';
+    const customerName  = req.body.customer_name || '';
 
     const expires = new Date();
     expires.setDate(expires.getDate() + days);
     const expiresAt = expires.toISOString();
 
-    const insert = db.prepare('INSERT INTO licenses (license_key, expires_at, note) VALUES (?, ?, ?)');
+    const insert = db.prepare('INSERT INTO licenses (license_key, expires_at, note, customer_name) VALUES (?, ?, ?, ?)');
     const keys = [];
     db.exec('BEGIN');
     try {
         for (let i = 0; i < count; i++) {
             const key = generateKey();
-            insert.run(key, expiresAt, note);
+            insert.run(key, expiresAt, note, customerName);
             keys.push(key);
         }
         db.exec('COMMIT');
