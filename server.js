@@ -61,6 +61,7 @@ db.exec(`
 // Migrazione colonne su DB esistenti
 try { db.exec('ALTER TABLE licenses ADD COLUMN is_trial INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE licenses ADD COLUMN customer_name TEXT DEFAULT ''"); } catch(e) {}
+try { db.exec("ALTER TABLE licenses ADD COLUMN max_barcodes INTEGER DEFAULT 100"); } catch(e) {}
 
 // ====== 管理员密钥（首次运行自动生成） ======
 let adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
@@ -118,7 +119,7 @@ app.post('/api/verify', rateLimit, (req, res) => {
     if (!row.device_id) {
         db.prepare('UPDATE licenses SET device_id = ? WHERE license_key = ?').run(device_id, key);
         log('bound_new');
-        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at });
+        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at, max_barcodes: row.max_barcodes || 100 });
     }
 
     if (row.device_id !== device_id) {
@@ -127,7 +128,7 @@ app.post('/api/verify', rateLimit, (req, res) => {
     }
 
     log('ok');
-    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1 });
+    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1, max_barcodes: row.max_barcodes || 100 });
 });
 
 // ====== Script protetto: solo licenze valide ======
@@ -227,7 +228,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 // 查看所有序列号
 app.get('/api/admin/licenses', requireAdmin, (req, res) => {
     const rows = db.prepare(`
-        SELECT id, license_key, customer_name, device_id, created_at, expires_at, is_active, is_trial, note,
+        SELECT id, license_key, customer_name, device_id, created_at, expires_at, is_active, is_trial, note, max_barcodes,
                CASE WHEN datetime('now') > expires_at THEN 1 ELSE 0 END as is_expired
         FROM licenses ORDER BY created_at DESC LIMIT 500
     `).all();
@@ -299,6 +300,16 @@ app.post('/api/admin/rename', requireAdmin, (req, res) => {
     const r = db.prepare('UPDATE licenses SET customer_name=? WHERE license_key=?').run(name, key);
     if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: '客户名称已更新', license_key: key, customer_name: name });
+});
+
+// 设置最大条码数（100或500）
+app.post('/api/admin/set-max-barcodes', requireAdmin, (req, res) => {
+    const key = (req.body.license_key || '').toUpperCase();
+    const max = parseInt(req.body.max_barcodes) || 100;
+    if (max !== 100 && max !== 500) return res.status(400).json({ error: '只能设置100或500' });
+    const r = db.prepare('UPDATE licenses SET max_barcodes=? WHERE license_key=?').run(max, key);
+    if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
+    res.json({ msg: `已设置为${max}个条码`, license_key: key, max_barcodes: max });
 });
 
 // 解绑设备
