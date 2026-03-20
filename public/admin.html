@@ -326,10 +326,11 @@ function renderLicenses(rows) {
     const customerName = r.customer_name || '';
 
     const maxBC = r.max_barcodes || 100;
+    const hasExport = r.can_export;
     return `<tr>
       <td class="key-mono">${r.license_key}</td>
       <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${customerName}">${customerName || '<span style="color:#ccc">—</span>'}</td>
-      <td>${badge}${maxBC >= 500 ? ' <span class="badge badge-blue">500</span>' : ''}</td>
+      <td>${badge}${maxBC >= 500 ? ' <span class="badge badge-blue">500</span>' : ''}${hasExport ? ' <span class="badge badge-green">Excel</span>' : ''}</td>
       <td>${bound}</td>
       <td>${cre}</td>
       <td>${exp}</td>
@@ -344,6 +345,9 @@ function renderLicenses(rows) {
         ${(r.max_barcodes || 100) < 500
           ? `<button class="action-btn btn-blue" onclick="setMaxBarcodes('${r.license_key}', 500)">解锁500</button>`
           : `<button class="action-btn btn-orange" onclick="setMaxBarcodes('${r.license_key}', 100)">锁回100</button>`}
+        ${!hasExport
+          ? `<button class="action-btn btn-green" onclick="toggleExport('${r.license_key}', true)">开导出</button>`
+          : `<button class="action-btn btn-orange" onclick="toggleExport('${r.license_key}', false)">关导出</button>`}
         <button class="action-btn btn-gray"   onclick="copyText('${r.license_key}')">复制</button>
       </div></td>
     </tr>`;
@@ -458,6 +462,13 @@ async function setMaxBarcodes(key, max) {
   const label = max === 500 ? '解锁500个条码模式' : '锁回100个条码模式';
   if (!confirm(`确认为 ${key} ${label}？`)) return;
   await api('POST', '/api/admin/set-max-barcodes', { license_key: key, max_barcodes: max });
+  loadLicenses();
+}
+
+async function toggleExport(key, enable) {
+  const label = enable ? '开启Excel导出功能' : '关闭Excel导出功能';
+  if (!confirm(`确认为 ${key} ${label}？`)) return;
+  await api('POST', '/api/admin/set-export', { license_key: key, can_export: enable });
   loadLicenses();
 }
 
