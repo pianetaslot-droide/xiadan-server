@@ -307,7 +307,7 @@ app.post('/api/admin/rename', requireAdmin, (req, res) => {
 app.post('/api/admin/set-max-barcodes', requireAdmin, (req, res) => {
     const key = (req.body.license_key || '').toUpperCase();
     const max = parseInt(req.body.max_barcodes) || 100;
-    if (max !== 100 && max !== 500) return res.status(400).json({ error: '只能设置100或500' });
+    if (![100, 500, 9999].includes(max)) return res.status(400).json({ error: '只能设置100、500或9999' });
     const r = db.prepare('UPDATE licenses SET max_barcodes=? WHERE license_key=?').run(max, key);
     if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: `已设置为${max}个条码`, license_key: key, max_barcodes: max });
