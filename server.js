@@ -63,6 +63,7 @@ try { db.exec('ALTER TABLE licenses ADD COLUMN is_trial INTEGER DEFAULT 0'); } c
 try { db.exec("ALTER TABLE licenses ADD COLUMN customer_name TEXT DEFAULT ''"); } catch(e) {}
 try { db.exec("ALTER TABLE licenses ADD COLUMN max_barcodes INTEGER DEFAULT 100"); } catch(e) {}
 try { db.exec("ALTER TABLE licenses ADD COLUMN can_export INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE licenses ADD COLUMN can_download_images INTEGER DEFAULT 0"); } catch(e) {}
 
 // ====== 管理员密钥（首次运行自动生成） ======
 let adminRow = db.prepare('SELECT token FROM admin_tokens LIMIT 1').get();
@@ -120,7 +121,7 @@ app.post('/api/verify', rateLimit, (req, res) => {
     if (!row.device_id) {
         db.prepare('UPDATE licenses SET device_id = ? WHERE license_key = ?').run(device_id, key);
         log('bound_new');
-        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export) });
+        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images) });
     }
 
     if (row.device_id !== device_id) {
@@ -129,7 +130,7 @@ app.post('/api/verify', rateLimit, (req, res) => {
     }
 
     log('ok');
-    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export) });
+    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images) });
 });
 
 // ====== Script protetto: solo licenze valide ======
@@ -229,7 +230,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 // 查看所有序列号
 app.get('/api/admin/licenses', requireAdmin, (req, res) => {
     const rows = db.prepare(`
-        SELECT id, license_key, customer_name, device_id, created_at, expires_at, is_active, is_trial, note, max_barcodes, can_export,
+        SELECT id, license_key, customer_name, device_id, created_at, expires_at, is_active, is_trial, note, max_barcodes, can_export, can_download_images,
                CASE WHEN datetime('now') > expires_at THEN 1 ELSE 0 END as is_expired
         FROM licenses ORDER BY created_at DESC LIMIT 500
     `).all();
@@ -320,6 +321,15 @@ app.post('/api/admin/set-export', requireAdmin, (req, res) => {
     const r = db.prepare('UPDATE licenses SET can_export=? WHERE license_key=?').run(canExport, key);
     if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: canExport ? '已开启导出功能' : '已关闭导出功能', license_key: key, can_export: !!canExport });
+});
+
+// 设置图片下载权限
+app.post('/api/admin/set-download-images', requireAdmin, (req, res) => {
+    const key = (req.body.license_key || '').toUpperCase();
+    const canDL = req.body.can_download_images ? 1 : 0;
+    const r = db.prepare('UPDATE licenses SET can_download_images=? WHERE license_key=?').run(canDL, key);
+    if (r.changes === 0) return res.status(404).json({ error: '序列号不存在' });
+    res.json({ msg: canDL ? '已开启图片下载功能' : '已关闭图片下载功能', license_key: key, can_download_images: !!canDL });
 });
 
 // 解绑设备

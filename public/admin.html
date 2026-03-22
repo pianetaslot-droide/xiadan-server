@@ -327,10 +327,11 @@ function renderLicenses(rows) {
 
     const maxBC = r.max_barcodes || 100;
     const hasExport = r.can_export;
+    const hasDLImg = r.can_download_images;
     return `<tr>
       <td class="key-mono">${r.license_key}</td>
       <td style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${customerName}">${customerName || '<span style="color:#ccc">—</span>'}</td>
-      <td>${badge}${maxBC >= 9999 ? ' <span class="badge badge-blue">无限</span>' : maxBC >= 500 ? ' <span class="badge badge-blue">500</span>' : ''}${hasExport ? ' <span class="badge badge-green">Excel</span>' : ''}</td>
+      <td>${badge}${maxBC >= 9999 ? ' <span class="badge badge-blue">无限</span>' : maxBC >= 500 ? ' <span class="badge badge-blue">500</span>' : ''}${hasExport ? ' <span class="badge badge-green">Excel</span>' : ''}${hasDLImg ? ' <span class="badge badge-purple" style="background:#f3e8ff;color:#7c3aed">图片</span>' : ''}</td>
       <td>${bound}</td>
       <td>${cre}</td>
       <td>${exp}</td>
@@ -351,6 +352,9 @@ function renderLicenses(rows) {
         ${!hasExport
           ? `<button class="action-btn btn-green" onclick="toggleExport('${r.license_key}', true)">开导出</button>`
           : `<button class="action-btn btn-orange" onclick="toggleExport('${r.license_key}', false)">关导出</button>`}
+        ${!hasDLImg
+          ? `<button class="action-btn btn-green" onclick="toggleDLImg('${r.license_key}', true)">开图片</button>`
+          : `<button class="action-btn btn-orange" onclick="toggleDLImg('${r.license_key}', false)">关图片</button>`}
         <button class="action-btn btn-gray"   onclick="copyText('${r.license_key}')">复制</button>
       </div></td>
     </tr>`;
@@ -472,6 +476,13 @@ async function toggleExport(key, enable) {
   const label = enable ? '开启Excel导出功能' : '关闭Excel导出功能';
   if (!confirm(`确认为 ${key} ${label}？`)) return;
   await api('POST', '/api/admin/set-export', { license_key: key, can_export: enable });
+  loadLicenses();
+}
+
+async function toggleDLImg(key, enable) {
+  const label = enable ? '开启图片下载功能' : '关闭图片下载功能';
+  if (!confirm(`确认为 ${key} ${label}？`)) return;
+  await api('POST', '/api/admin/set-download-images', { license_key: key, can_download_images: enable });
   loadLicenses();
 }
 
