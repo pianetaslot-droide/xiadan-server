@@ -134,18 +134,19 @@ app.post('/api/verify', rateLimit, (req, res) => {
 });
 
 // ====== Script protetto: solo licenze valide ======
-const GIST_URL = 'https://gist.githubusercontent.com/pianetaslot-droide/2b67c88036b16c0d4b91a7281748f8d4/raw/yollgo_script.js';
 const SCRIPT_SECRET = process.env.SCRIPT_SECRET; // chiave AES-256 in Railway env vars
+const SCRIPT_FILE = path.join(__dirname, 'encrypted_script.b64');
 let scriptCache = { content: null, fetchedAt: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
 
 function fetchEncryptedScript() {
     return new Promise((resolve, reject) => {
-        https.get(GIST_URL + '?t=' + Date.now(), (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => resolve(data.trim()));
-        }).on('error', reject);
+        try {
+            const data = require('fs').readFileSync(SCRIPT_FILE, 'utf8').trim();
+            resolve(data);
+        } catch (e) {
+            reject(new Error('Script file not found: ' + e.message));
+        }
     });
 }
 
