@@ -27,7 +27,9 @@ const rateLimit = (req, res, next) => {
 setInterval(() => { const now = Date.now(); rateLimitMap.forEach((v, k) => { if (now > v.resetAt) rateLimitMap.delete(k); }); }, 300_000);
 
 // ====== 数据库初始化 ======
-const db = new DatabaseSync(path.join(__dirname, 'licenses.db'));
+// Su Render: usa /data (disco persistente). In locale o Railway: usa __dirname
+const DB_DIR = process.env.RENDER ? '/data' : __dirname;
+const db = new DatabaseSync(path.join(DB_DIR, 'licenses.db'));
 db.exec('PRAGMA journal_mode = WAL');
 
 db.exec(`
