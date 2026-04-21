@@ -115,6 +115,9 @@ function generateKey() {
     return `XDSQ-${seg()}-${seg()}-${seg()}`;
 }
 
+// ====== Keep-alive ping (para UptimeRobot) ======
+app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
 // ==========================================
 //  APP 端接口
 // ==========================================
@@ -348,6 +351,14 @@ app.post('/api/admin/unbind', requireAdmin, async (req, res) => {
     const r = await dbRun('UPDATE licenses SET device_id=NULL WHERE license_key=?', [key]);
     if (r.rowsAffected === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: '已解绑设备', license_key: key });
+});
+
+app.get('/api/admin/orders', requireAdmin, async (req, res) => {
+    const rows = await dbAll(`
+        SELECT id, license_key, device_id, result, ip, created_at
+        FROM verify_log ORDER BY created_at DESC LIMIT 100
+    `);
+    res.json({ total: rows.length, orders: rows });
 });
 
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
