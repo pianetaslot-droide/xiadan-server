@@ -138,6 +138,7 @@
   <div class="tabs">
     <div class="tab active" onclick="switchTab('licenses')">序列号管理</div>
     <div class="tab"        onclick="switchTab('orders')">订单记录</div>
+    <div class="tab"        onclick="switchTab('devicelogs')">设备日志</div>
   </div>
 
   <!-- Licenses panel -->
@@ -174,6 +175,22 @@
   </div>
 
   <!-- Orders panel (verify log) -->
+  <div class="panel" id="panel-devicelogs">
+    <div class="toolbar">
+      <input id="logKeyFilter" placeholder="按序列号过滤..." style="width:220px">
+      <button class="btn btn-blue" onclick="loadDeviceLogs()">查询</button>
+      <button class="btn btn-gray" onclick="document.getElementById('logKeyFilter').value='';loadDeviceLogs()">全部</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>序列号</th><th>标签</th><th style="min-width:300px">内容</th><th>时间</th></tr>
+        </thead>
+        <tbody id="deviceLogBody"><tr><td colspan="5" class="empty">点击查询加载日志</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="panel" id="panel-orders">
     <div class="toolbar">
       <input id="orderSearch" placeholder="搜索序列号/IP..." oninput="filterOrders()">
@@ -467,10 +484,30 @@ async function generateKeys() {
 
 // ===== Helpers =====
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === (name === 'licenses' ? 0 : 1)));
+  const tabs = ['licenses', 'orders', 'devicelogs'];
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', tabs[i] === name));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById(`panel-${name}`).classList.add('active');
   if (name === 'orders') loadOrders();
+  if (name === 'devicelogs') loadDeviceLogs();
+}
+
+async function loadDeviceLogs() {
+  const key = document.getElementById('logKeyFilter').value.trim().toUpperCase();
+  const url = key ? `/api/admin/device-logs?license_key=${encodeURIComponent(key)}` : '/api/admin/device-logs';
+  const rows = await api('GET', url);
+  const tbody = document.getElementById('deviceLogBody');
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无日志</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td>${r.id}</td>
+    <td class="key-mono" style="font-size:11px">${r.license_key || ''}</td>
+    <td><span class="badge badge-blue">${r.tag || ''}</span></td>
+    <td style="white-space:pre-wrap;word-break:break-all;font-size:12px">${r.message || ''}</td>
+    <td style="white-space:nowrap;font-size:11px">${r.created_at || ''}</td>
+  </tr>`).join('');
 }
 
 async function editName(key, current) {

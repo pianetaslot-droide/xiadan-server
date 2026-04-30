@@ -72,6 +72,13 @@ async function initDB() {
         device_id TEXT PRIMARY KEY,
         created_at TEXT DEFAULT (datetime('now'))
     )`);
+    await dbRun(`CREATE TABLE IF NOT EXISTS device_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        license_key TEXT,
+        tag TEXT,
+        message TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )`);
 
     // Migrazioni colonne (ignora errori se esistono già)
     const migrations = [
@@ -345,6 +352,27 @@ app.post('/api/admin/set-scrape-products', requireAdmin, async (req, res) => {
     const r = await dbRun('UPDATE licenses SET can_scrape_products=? WHERE license_key=?', [canScrape, key]);
     if (r.rowsAffected === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: canScrape ? '已开启抓取功能' : '已关闭抓取功能', license_key: key, can_scrape_products: !!canScrape });
+});
+
+// 设备日志上报（App 调用，无需 admin token，只需有效 license_key）
+app.post('/api/device-log', async (req, res) => {
+    const key = (req.body.license_key || '').toUpperCase();
+    const tag = (req.body.tag || 'debug').substring(0, 32);
+    const message = (req.body.message || '').substring(0, 2000);
+    if (!key) return res.status(400).json({ error: 'missing license_key' });
+    await dbRun('INSERT INTO device_logs (license_key, tag, message) VALUES (?,?,?)', [key, tag, message]);
+    // 只保留最近 500 条
+    await dbRun('DELETE FROM device_logs WHERE id NOT IN (SELECT id FROM device_logs ORDER BY id DESC LIMIT 500)');
+    res.json({ ok: true });
+});
+
+// 查看设备日志（admin 专用）
+app.get('/api/admin/device-logs', requireAdmin, async (req, res) => {
+    const key = req.query.license_key ? req.query.license_key.toUpperCase() : null;
+    const rows = key
+        ? await dbAll('SELECT * FROM device_logs WHERE license_key=? ORDER BY id DESC LIMIT 200', [key])
+        : await dbAll('SELECT * FROM device_logs ORDER BY id DESC LIMIT 200');
+    res.json(rows);
 });
 
 app.post('/api/admin/set-wifi-blocked', requireAdmin, async (req, res) => {
