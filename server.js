@@ -80,7 +80,8 @@ async function initDB() {
         "ALTER TABLE licenses ADD COLUMN max_barcodes INTEGER DEFAULT 100",
         "ALTER TABLE licenses ADD COLUMN can_export INTEGER DEFAULT 0",
         "ALTER TABLE licenses ADD COLUMN can_download_images INTEGER DEFAULT 0",
-        "ALTER TABLE licenses ADD COLUMN can_scrape_products INTEGER DEFAULT 0"
+        "ALTER TABLE licenses ADD COLUMN can_scrape_products INTEGER DEFAULT 0",
+        "ALTER TABLE licenses ADD COLUMN wifi_blocked INTEGER DEFAULT 1"
     ];
     for (const sql of migrations) {
         try { await dbRun(sql); } catch(e) {}
@@ -144,7 +145,7 @@ app.post('/api/verify', rateLimit, async (req, res) => {
     if (!row.device_id) {
         await dbRun('UPDATE licenses SET device_id = ? WHERE license_key = ?', [device_id, key]);
         await log('bound_new');
-        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images), can_scrape_products: !!(row.can_scrape_products) });
+        return res.json({ valid: true, msg: '激活成功', expires_at: row.expires_at, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images), can_scrape_products: !!(row.can_scrape_products), wifi_blocked: row.wifi_blocked !== 0 });
     }
 
     if (row.device_id !== device_id) {
@@ -153,7 +154,7 @@ app.post('/api/verify', rateLimit, async (req, res) => {
     }
 
     await log('ok');
-    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images), can_scrape_products: !!(row.can_scrape_products) });
+    return res.json({ valid: true, msg: '验证通过', expires_at: row.expires_at, is_trial: row.is_trial === 1, max_barcodes: row.max_barcodes || 100, can_export: !!(row.can_export), can_download_images: !!(row.can_download_images), can_scrape_products: !!(row.can_scrape_products), wifi_blocked: row.wifi_blocked !== 0 });
 });
 
 // ====== Script protetto: solo licenze valide ======
@@ -344,6 +345,14 @@ app.post('/api/admin/set-scrape-products', requireAdmin, async (req, res) => {
     const r = await dbRun('UPDATE licenses SET can_scrape_products=? WHERE license_key=?', [canScrape, key]);
     if (r.rowsAffected === 0) return res.status(404).json({ error: '序列号不存在' });
     res.json({ msg: canScrape ? '已开启抓取功能' : '已关闭抓取功能', license_key: key, can_scrape_products: !!canScrape });
+});
+
+app.post('/api/admin/set-wifi-blocked', requireAdmin, async (req, res) => {
+    const key = (req.body.license_key || '').toUpperCase();
+    const blocked = req.body.wifi_blocked ? 1 : 0;
+    const r = await dbRun('UPDATE licenses SET wifi_blocked=? WHERE license_key=?', [blocked, key]);
+    if (r.rowsAffected === 0) return res.status(404).json({ error: '序列号不存在' });
+    res.json({ msg: blocked ? '已开启WiFi限制' : '已关闭WiFi限制', license_key: key, wifi_blocked: !!blocked });
 });
 
 app.post('/api/admin/unbind', requireAdmin, async (req, res) => {
